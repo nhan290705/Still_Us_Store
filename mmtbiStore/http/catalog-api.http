@@ -1,0 +1,116 @@
+# Test các API trang người dùng (danh mục, sản phẩm).
+# Cách chạy: mở file này trong IntelliJ, chạy app trước, rồi bấm ▶▶ (Run All Requests) ở đầu file.
+# Kết quả từng test xem ở tab "Tests" bên dưới.
+# Dữ liệu mong đợi dựa trên file dữ liệu mẫu du-lieu-mau.sql.
+
+@host = http://localhost:8080
+
+### 1. Danh mục: phải có 2 danh mục
+GET {{host}}/api/categories
+
+> {%
+    client.test("Danh mục", function () {
+        client.assert(response.status === 200, "Mã trạng thái: " + response.status);
+        client.assert(response.body.length === 2, "Số danh mục: " + response.body.length);
+    });
+%}
+
+### 2. Tất cả sản phẩm: 3 sản phẩm, KHÔNG có bản nháp (id 4)
+GET {{host}}/api/products
+
+> {%
+    client.test("Danh sách sản phẩm", function () {
+        client.assert(response.status === 200, "Mã trạng thái: " + response.status);
+        client.assert(response.body.totalItems === 3, "totalItems: " + response.body.totalItems);
+        var coBanNhap = response.body.items.some(function (p) { return p.id === 4; });
+        client.assert(!coBanNhap, "Sản phẩm nháp bị lộ ra!");
+    });
+%}
+
+### 3. Lọc theo danh mục: chỉ Custom Clog
+GET {{host}}/api/products?category=clog-custom
+
+> {%
+    client.test("Lọc danh mục", function () {
+        client.assert(response.body.totalItems === 1, "totalItems: " + response.body.totalItems);
+        client.assert(response.body.items[0].slug === "still-us-custom-clog", "Sai sản phẩm");
+    });
+%}
+
+### 4. Phân trang: trang 2 (page=1), mỗi trang 2 -> còn 1 sản phẩm
+GET {{host}}/api/products?page=1&size=2
+
+> {%
+    client.test("Phân trang", function () {
+        client.assert(response.body.items.length === 1, "Số item: " + response.body.items.length);
+        client.assert(response.body.totalPages === 2, "totalPages: " + response.body.totalPages);
+    });
+%}
+
+### 5. Chi tiết Classic Clog: 2 nhóm lựa chọn, 6 biến thể
+GET {{host}}/api/products/still-us-classic-clog
+
+> {%
+    client.test("Chi tiết Classic", function () {
+        client.assert(response.status === 200, "Mã trạng thái: " + response.status);
+        client.assert(response.body.options.length === 2, "Số nhóm lựa chọn: " + response.body.options.length);
+        client.assert(response.body.variants.length === 6, "Số biến thể: " + response.body.variants.length);
+    });
+%}
+
+### 6. Chi tiết Custom Clog: cỡ 40 giá 319.000
+GET {{host}}/api/products/still-us-custom-clog
+
+> {%
+    client.test("Giá biến thể", function () {
+        var v = response.body.variants.filter(function (x) { return x.sku === "CTM-HONG-40"; })[0];
+        client.assert(v.price === 319000, "Giá CTM-HONG-40: " + v.price);
+    });
+%}
+
+### 7. Summer hết hàng: inStock = false
+GET {{host}}/api/products/still-us-classic-summer
+
+> {%
+    client.test("Hết hàng", function () {
+        client.assert(response.body.inStock === false, "inStock: " + response.body.inStock);
+    });
+%}
+
+### 8. Sản phẩm nháp: không được hiện -> 404
+GET {{host}}/api/products/mau-dang-thiet-ke
+
+> {%
+    client.test("Nháp trả 404", function () {
+        client.assert(response.status === 404, "Mã trạng thái: " + response.status);
+        client.assert(response.body.message === "Không tìm thấy sản phẩm: mau-dang-thiet-ke", "message: " + response.body.message);
+    });
+%}
+
+### 9. Sản phẩm không tồn tại -> 404
+GET {{host}}/api/products/khong-co
+
+> {%
+    client.test("Không tồn tại trả 404", function () {
+        client.assert(response.status === 404, "Mã trạng thái: " + response.status);
+    });
+%}
+
+### 10. Tham số sai kiểu -> 400 kèm thông báo
+GET {{host}}/api/products?page=abc
+
+> {%
+    client.test("page=abc trả 400", function () {
+        client.assert(response.status === 400, "Mã trạng thái: " + response.status);
+        client.assert(response.body.message === "Tham số 'page' không hợp lệ: abc", "message: " + response.body.message);
+    });
+%}
+
+### 11. Sai đường dẫn -> 404
+GET {{host}}/api/product
+
+> {%
+    client.test("Sai đường dẫn trả 404", function () {
+        client.assert(response.status === 404, "Mã trạng thái: " + response.status);
+    });
+%}
