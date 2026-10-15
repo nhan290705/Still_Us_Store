@@ -1,9 +1,12 @@
 package com.example.mmtbistore.model.order;
 
 import com.example.mmtbistore.model.common.BaseEntity;
+import com.example.mmtbistore.model.memory.Voucher;
 import com.example.mmtbistore.model.enums.OrderStatus;
 import com.example.mmtbistore.model.enums.PaymentMethod;
 import com.example.mmtbistore.model.enums.PaymentStatus;
+import com.example.mmtbistore.model.enums.SalesChannel;
+import com.example.mmtbistore.model.user.AppUser;
 import com.example.mmtbistore.model.user.Customer;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -59,7 +62,24 @@ public class Order extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
-    private OrderStatus status = OrderStatus.PENDING_PAYMENT;
+    private OrderStatus status = OrderStatus.RECEIVED;
+
+    // ----- Kênh bán, đợt sản xuất, ưu đãi (cột mới phải cho phép null vì bảng có thể đã có dữ liệu) -----
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private SalesChannel channel = SalesChannel.WEBSITE;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "created_by_id")  // null = khách tự đặt trên web
+    private AppUser createdBy;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "batch_id")       // null = gửi ngay từ hàng có sẵn
+    private SaleBatch batch;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "voucher_id")     // voucher STILL US đã áp cho đơn này
+    private Voucher voucher;
 
     // ----- Vận chuyển -----
     @Column(length = 50) private String shippingCarrier;

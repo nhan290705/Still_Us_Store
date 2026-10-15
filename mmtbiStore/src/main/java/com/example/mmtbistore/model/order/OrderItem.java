@@ -52,4 +52,8 @@ public class OrderItem extends BaseEntity {
 
     @Column(length = 500) private String previewImageUrl;
     @Column(length = 500) private String printFileUrl;
+
+    // ----- Khắc tên: mỗi đôi là một dòng order_items riêng -----
+    @Column(length = 100)
+    private String engravingText;        // giới hạn số ký tự đặt trong cấu hình (khách chưa chốt)
 }
