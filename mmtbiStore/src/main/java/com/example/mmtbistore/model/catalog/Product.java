@@ -53,6 +53,12 @@ public class Product extends BaseEntity {
     private int reviewCount;
     private int soldCount;
 
+    // Cột mới: dùng kiểu bọc (Boolean, Integer) để cột cho phép null, vì bảng đã có dữ liệu
+    @Column(length = 30, unique = true)
+    private String code;                 // Mã SP hiện trên thẻ sản phẩm
+    private Boolean isCoupleBox = false; // full box hai đôi: chỉ loại này được đăng ký STILL US
+    private Integer weightGrams;         // cân nặng gói hàng (gram), gửi API nhà vận chuyển để tính phí ship
+
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ProductImage> images = new ArrayList<>();
 
