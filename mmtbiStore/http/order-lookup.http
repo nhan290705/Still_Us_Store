@@ -1,0 +1,100 @@
+# Test API tra cứu đơn hàng (khách nhập SĐT + mã đơn).
+# Cách chạy: chạy app trước, rồi bấm ▶▶ (Run All Requests) ở đầu file.
+# Dữ liệu mong đợi dựa trên du-lieu-mau.sql + du-lieu-mau-don-hang.sql.
+
+@host = http://localhost:8080
+
+### 1. Đúng SĐT + đúng mã: đơn 2 đôi khắc tên, đã bàn giao ĐVVC
+GET {{host}}/api/orders/lookup?phone=0901234567&code=DD261015-A1B2C
+
+> {%
+    client.test("Tra cứu đúng", function () {
+        client.assert(response.status === 200, "Mã trạng thái: " + response.status);
+        client.assert(response.body.status === "HANDED_TO_CARRIER", "Trạng thái: " + response.body.status);
+        client.assert(response.body.statusLabel === "Đã bàn giao ĐVVC", "Nhãn: " + response.body.statusLabel);
+        client.assert(response.body.items.length === 2, "Số đôi: " + response.body.items.length);
+        client.assert(response.body.items[0].engravingText === "An 15.10.2026", "Chữ khắc: " + response.body.items[0].engravingText);
+        client.assert(response.body.history.length === 4, "Số bước lịch sử: " + response.body.history.length);
+        client.assert(response.body.trackingNumber === "GHN123456789", "Mã vận đơn: " + response.body.trackingNumber);
+    });
+%}
+
+### 2. SĐT có dấu cách + mã chữ thường: vẫn tìm được
+GET {{host}}/api/orders/lookup?phone=090%20123%204567&code=dd261015-a1b2c
+
+> {%
+    client.test("Chuẩn hoá đầu vào", function () {
+        client.assert(response.status === 200, "Mã trạng thái: " + response.status);
+        client.assert(response.body.orderCode === "DD261015-A1B2C", "Mã đơn: " + response.body.orderCode);
+    });
+%}
+
+### 3. SĐT dạng +84 (dấu + phải viết là %2B trong đường dẫn): vẫn tìm được
+GET {{host}}/api/orders/lookup?phone=%2B84901234567&code=DD261015-A1B2C
+
+> {%
+    client.test("SĐT +84", function () {
+        client.assert(response.status === 200, "Mã trạng thái: " + response.status);
+    });
+%}
+
+### 4. Sai SĐT: 404 "Không tìm thấy đơn hàng"
+GET {{host}}/api/orders/lookup?phone=0999999999&code=DD261015-A1B2C
+
+> {%
+    client.test("Sai SĐT", function () {
+        client.assert(response.status === 404, "Mã trạng thái: " + response.status);
+        client.assert(response.body.message === "Không tìm thấy đơn hàng", "Thông báo: " + response.body.message);
+    });
+%}
+
+### 5. Sai mã đơn: cũng đúng lỗi đó (không lộ đơn có tồn tại hay không)
+GET {{host}}/api/orders/lookup?phone=0901234567&code=DD000000-AAAAA
+
+> {%
+    client.test("Sai mã đơn", function () {
+        client.assert(response.status === 404, "Mã trạng thái: " + response.status);
+        client.assert(response.body.message === "Không tìm thấy đơn hàng", "Thông báo: " + response.body.message);
+    });
+%}
+
+### 6. SĐT của khách khác + mã đơn của khách 1: không được xem đơn người khác
+GET {{host}}/api/orders/lookup?phone=0912345678&code=DD261015-A1B2C
+
+> {%
+    client.test("Đơn của người khác", function () {
+        client.assert(response.status === 404, "Mã trạng thái: " + response.status);
+    });
+%}
+
+### 7. Thiếu SĐT: 400
+GET {{host}}/api/orders/lookup?code=DD261015-A1B2C
+
+> {%
+    client.test("Thiếu SĐT", function () {
+        client.assert(response.status === 400, "Mã trạng thái: " + response.status);
+        client.assert(response.body.message === "Vui lòng nhập số điện thoại và mã đơn hàng", "Thông báo: " + response.body.message);
+    });
+%}
+
+### 8. SĐT sai định dạng: 400
+GET {{host}}/api/orders/lookup?phone=abc123&code=DD261015-A1B2C
+
+> {%
+    client.test("SĐT sai định dạng", function () {
+        client.assert(response.status === 400, "Mã trạng thái: " + response.status);
+        client.assert(response.body.message === "Số điện thoại không hợp lệ", "Thông báo: " + response.body.message);
+    });
+%}
+
+### 9. Đơn đã huỷ: vẫn xem được, trạng thái "Đã huỷ"
+GET {{host}}/api/orders/lookup?phone=0912345678&code=DD261016-X9Y8Z
+
+> {%
+    client.test("Đơn đã huỷ", function () {
+        client.assert(response.status === 200, "Mã trạng thái: " + response.status);
+        client.assert(response.body.status === "CANCELLED", "Trạng thái: " + response.body.status);
+        client.assert(response.body.statusLabel === "Đã huỷ", "Nhãn: " + response.body.statusLabel);
+        client.assert(response.body.history.length === 2, "Số bước lịch sử: " + response.body.history.length);
+    });
+%}
