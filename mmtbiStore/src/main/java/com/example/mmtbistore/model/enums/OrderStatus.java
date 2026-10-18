@@ -1,4 +1,22 @@
 package com.example.mmtbistore.model.enums;
 
-// 5 bước theo ghi chú của khách: Đã ghi nhận -> Đang chuẩn bị -> Chưa giao -> Đã bàn giao ĐVVC -> Đã giao
-public enum OrderStatus { RECEIVED, PREPARING, WAITING_SHIPMENT, HANDED_TO_CARRIER, DELIVERED, CANCELLED, RETURNED }
+public enum OrderStatus {
+    RECEIVED("Đã ghi nhận"),
+    PREPARING("Đang chuẩn bị"),
+    WAITING_SHIPMENT("Chưa giao"),
+    HANDED_TO_CARRIER("Đã bàn giao ĐVVC"),
+    DELIVERED("Đã giao"),
+    CANCELLED("Đã huỷ"),
+    RETURNED("Hoàn trả");
+
+    private final String label;
+
+    OrderStatus (String label){
+        this.label = label;
+    }
+
+    public String getLabel(){
+        return this.label;
+    }
+}
+

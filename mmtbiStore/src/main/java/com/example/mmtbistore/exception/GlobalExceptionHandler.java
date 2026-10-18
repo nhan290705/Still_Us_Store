@@ -26,6 +26,11 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.NOT_FOUND, ex.getMessage(), request);
     }
 
+    @ExceptionHandler(BadRequestException.class)
+    public ResponseEntity<ApiError> handleBadRequest(BadRequestException ex, HttpServletRequest request){
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
     // 404: gõ sai đường dẫn (VD: /api/product)
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ApiError> handleNoPath(NoResourceFoundException ex, HttpServletRequest request) {
