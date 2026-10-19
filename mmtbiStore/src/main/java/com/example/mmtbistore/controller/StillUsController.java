@@ -1,11 +1,14 @@
 package com.example.mmtbistore.controller;
 
+import com.example.mmtbistore.dto.StillUsDetailResponse;
 import com.example.mmtbistore.dto.StillUsRegisterRequest;
 import com.example.mmtbistore.dto.StillUsResponse;
 import com.example.mmtbistore.service.StillUsService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -25,5 +28,11 @@ public class StillUsController {
     @ResponseStatus(HttpStatus.CREATED)
     public StillUsResponse register(@Valid @RequestBody StillUsRegisterRequest request) {
         return stillUsService.register(request);
+    }
+
+    // GET /api/still-us/{code}: trang công khai khi quét QR, không có SĐT hay thông tin đơn
+    @GetMapping("/{code}")
+    public StillUsDetailResponse getByCode(@PathVariable("code") String code) {
+        return stillUsService.getByCode(code);
     }
 }
