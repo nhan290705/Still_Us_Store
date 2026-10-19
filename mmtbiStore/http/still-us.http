@@ -1,0 +1,167 @@
+# Test API đăng ký STILL US.
+# Cách chạy: chạy app, chạy lại du-lieu-mau-don-hang.sql (vì test 1 đăng ký thật vào database),
+# rồi bấm ▶▶ (Run All Requests) ở đầu file. Các test chạy theo thứ tự từ trên xuống.
+
+@host = http://localhost:8080
+
+### 1. Đăng ký đúng: đơn full box của khách 1 -> 201, có mã QR, kết thúc sau 365 ngày
+POST {{host}}/api/still-us
+Content-Type: application/json
+
+{
+  "orderCode": "DD261015-A1B2C",
+  "phone": "0901234567",
+  "ownerName": "An",
+  "partnerName": "Bình"
+}
+
+> {%
+    client.test("Đăng ký đúng", function () {
+        client.assert(response.status === 201, "Mã trạng thái: " + response.status);
+        client.assert(response.body.code.length === 10, "Mã QR: " + response.body.code);
+        client.assert(response.body.status === "ACTIVE", "Trạng thái: " + response.body.status);
+        client.assert(response.body.ownerName === "An" && response.body.partnerName === "Bình", "Tên chưa đúng");
+        var days = (new Date(response.body.endsAt) - new Date(response.body.startedAt)) / 86400000;
+        client.assert(days === 365, "Số ngày: " + days);
+        client.global.set("stillUsCode", response.body.code);
+    });
+%}
+
+### 2. Đăng ký lần 2 cùng đơn -> 409
+POST {{host}}/api/still-us
+Content-Type: application/json
+
+{
+  "orderCode": "DD261015-A1B2C",
+  "phone": "0901234567",
+  "ownerName": "An",
+  "partnerName": "Bình"
+}
+
+> {%
+    client.test("Đăng ký lại cùng đơn", function () {
+        client.assert(response.status === 409, "Mã trạng thái: " + response.status);
+        client.assert(response.body.message === "Đơn này đã đăng ký STILL US", "Thông báo: " + response.body.message);
+    });
+%}
+
+### 3. Khách 1 đăng ký thêm đơn full box khác khi chuỗi đầu còn chạy -> 409
+POST {{host}}/api/still-us
+Content-Type: application/json
+
+{
+  "orderCode": "DD261017-F5G6H",
+  "phone": "0901234567",
+  "ownerName": "An",
+  "partnerName": "Bình"
+}
+
+> {%
+    client.test("Đang có chuỗi STILL US", function () {
+        client.assert(response.status === 409, "Mã trạng thái: " + response.status);
+        client.assert(response.body.message === "Bạn đang có một chuỗi STILL US", "Thông báo: " + response.body.message);
+    });
+%}
+
+### 4. Sai SĐT -> 404
+POST {{host}}/api/still-us
+Content-Type: application/json
+
+{
+  "orderCode": "DD261017-F5G6H",
+  "phone": "0999999999",
+  "ownerName": "An",
+  "partnerName": "Bình"
+}
+
+> {%
+    client.test("Sai SĐT", function () {
+        client.assert(response.status === 404, "Mã trạng thái: " + response.status);
+        client.assert(response.body.message === "Không tìm thấy đơn hàng", "Thông báo: " + response.body.message);
+    });
+%}
+
+### 5. Đơn đã huỷ -> 400
+POST {{host}}/api/still-us
+Content-Type: application/json
+
+{
+  "orderCode": "DD261016-X9Y8Z",
+  "phone": "0912345678",
+  "ownerName": "Bình",
+  "partnerName": "Nam"
+}
+
+> {%
+    client.test("Đơn đã huỷ", function () {
+        client.assert(response.status === 400, "Mã trạng thái: " + response.status);
+        client.assert(response.body.message === "Đơn đã huỷ hoặc đã hoàn, không thể đăng ký STILL US", "Thông báo: " + response.body.message);
+    });
+%}
+
+### 6. Đơn không có full box -> 400
+POST {{host}}/api/still-us
+Content-Type: application/json
+
+{
+  "orderCode": "DD261016-C3D4E",
+  "phone": "0987654321",
+  "ownerName": "Châu",
+  "partnerName": "Minh"
+}
+
+> {%
+    client.test("Không có full box", function () {
+        client.assert(response.status === 400, "Mã trạng thái: " + response.status);
+        client.assert(response.body.message === "Chỉ đơn có sản phẩm full box mới đăng ký được STILL US", "Thông báo: " + response.body.message);
+    });
+%}
+
+### 7. Thiếu tên người ấy -> 400 với thông báo tiếng Việt
+POST {{host}}/api/still-us
+Content-Type: application/json
+
+{
+  "orderCode": "DD261017-F5G6H",
+  "phone": "0901234567",
+  "ownerName": "An",
+  "partnerName": ""
+}
+
+> {%
+    client.test("Thiếu tên", function () {
+        client.assert(response.status === 400, "Mã trạng thái: " + response.status);
+        client.assert(response.body.message === "Vui lòng nhập tên người ấy", "Thông báo: " + response.body.message);
+    });
+%}
+
+### 8. SĐT sai định dạng -> 400
+POST {{host}}/api/still-us
+Content-Type: application/json
+
+{
+  "orderCode": "DD261017-F5G6H",
+  "phone": "abc123",
+  "ownerName": "An",
+  "partnerName": "Bình"
+}
+
+> {%
+    client.test("SĐT sai định dạng", function () {
+        client.assert(response.status === 400, "Mã trạng thái: " + response.status);
+        client.assert(response.body.message === "Số điện thoại không hợp lệ", "Thông báo: " + response.body.message);
+    });
+%}
+
+### 9. Body không phải JSON -> 400 (trước đây lỗi này bị báo nhầm thành 500)
+POST {{host}}/api/still-us
+Content-Type: application/json
+
+{ "orderCode": "DD261017-F5G6H",
+
+> {%
+    client.test("JSON hỏng", function () {
+        client.assert(response.status === 400, "Mã trạng thái: " + response.status);
+        client.assert(response.body.message === "Dữ liệu gửi lên không đúng định dạng JSON", "Thông báo: " + response.body.message);
+    });
+%}
