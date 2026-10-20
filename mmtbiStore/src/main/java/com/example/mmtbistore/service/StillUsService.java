@@ -1,5 +1,6 @@
 package com.example.mmtbistore.service;
 
+import com.example.mmtbistore.dto.StillUsDetailResponse;
 import com.example.mmtbistore.dto.StillUsRegisterRequest;
 import com.example.mmtbistore.dto.StillUsResponse;
 import com.example.mmtbistore.exception.BadRequestException;
@@ -17,8 +18,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 @Service
@@ -26,6 +30,7 @@ import java.util.Locale;
 public class StillUsService {
 
     private static final int CHAIN_DAYS = 365;
+    private static final int[] MILESTONE_DAYS = {90, 180, 365};
 
     // Mã QR: 10 ký tự, bỏ các chữ dễ nhầm (0/o, 1/l)
     private static final String SLUG_CHARS = "abcdefghijkmnpqrstuvwxyz23456789";
@@ -34,6 +39,8 @@ public class StillUsService {
 
     private final OrderRepository orderRepository;
     private final MemoryPageRepository memoryPageRepository;
+
+    // ===================== Mục 6: đăng ký =====================
 
     @Transactional
     public StillUsResponse register(StillUsRegisterRequest request) {
@@ -88,6 +95,78 @@ public class StillUsService {
         return toResponse(page);
     }
 
+    // ===================== Mục 7: xem chuỗi khi quét QR =====================
+
+    @Transactional(readOnly = true)
+    public StillUsDetailResponse getByCode(String code) {
+        MemoryPage page = findPage(code);
+
+        // QR in sẵn trên hộp nhưng khách chưa đăng ký: chỉ báo chưa đăng ký, không lộ gì thêm
+        if (page.getStartedAt() == null) {
+            return new StillUsDetailResponse(page.getSlug(), false, null, null, null,
+                    null, null, null, 0, 0, page.getThemeKey(), List.of());
+        }
+
+        Instant now = Instant.now();
+        Instant startedAt = page.getStartedAt();
+        Instant endsAt = endsAt(page);
+        StillUsStatus status = currentStatus(page, now);
+
+        // Chuỗi đã huỷ thì các mốc tính đến lúc huỷ; còn lại tính đến bây giờ
+        Instant reference = status == StillUsStatus.CANCELLED && page.getCancelledAt() != null
+                ? page.getCancelledAt() : now;
+        List<StillUsDetailResponse.Milestone> milestones = new ArrayList<>();
+        for (int day : MILESTONE_DAYS) {
+            Instant date = startedAt.plus(day, ChronoUnit.DAYS);
+            milestones.add(new StillUsDetailResponse.Milestone(day, date, !reference.isBefore(date)));
+        }
+
+        long daysLeft = 0;
+        if (status == StillUsStatus.ACTIVE) {
+            long secondsLeft = Duration.between(now, endsAt).getSeconds();
+            daysLeft = (secondsLeft + 86_399) / 86_400;   // làm tròn lên: còn 1 giây vẫn tính 1 ngày
+        }
+
+        // Chuỗi thứ mấy của khách (năm thứ 2, 3... để đổi giao diện)
+        long yearNumber = memoryPageRepository.countByOrder_Customer_IdAndStartedAtLessThanEqual(
+                page.getOrder().getCustomer().getId(), startedAt);
+
+        return new StillUsDetailResponse(
+                page.getSlug(),
+                true,
+                page.getPartnerName1(),
+                page.getPartnerName2(),
+                status,
+                startedAt,
+                endsAt,
+                page.getCancelledAt(),
+                daysLeft,
+                yearNumber,
+                page.getThemeKey(),
+                milestones
+        );
+    }
+
+    // ===================== Hàm phụ =====================
+
+    private MemoryPage findPage(String code) {
+        String slug = code == null ? "" : code.trim().toLowerCase(Locale.ROOT);
+        return memoryPageRepository.findBySlug(slug)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chuỗi STILL US"));
+    }
+
+    private Instant endsAt(MemoryPage page) {
+        return page.getStartedAt().plus(CHAIN_DAYS, ChronoUnit.DAYS);
+    }
+
+    // Đủ 365 ngày mà chưa huỷ thì coi như đã hoàn thành (chưa cần job cập nhật database)
+    private StillUsStatus currentStatus(MemoryPage page, Instant now) {
+        if (page.getStatus() == StillUsStatus.ACTIVE && !now.isBefore(endsAt(page))) {
+            return StillUsStatus.COMPLETED;
+        }
+        return page.getStatus();
+    }
+
     private StillUsResponse toResponse(MemoryPage page) {
         return new StillUsResponse(
                 page.getSlug(),
@@ -95,7 +174,7 @@ public class StillUsService {
                 page.getPartnerName2(),
                 page.getStatus(),
                 page.getStartedAt(),
-                page.getStartedAt().plus(CHAIN_DAYS, ChronoUnit.DAYS)
+                endsAt(page)
         );
     }
 
