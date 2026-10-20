@@ -1,5 +1,7 @@
 package com.example.mmtbistore.controller;
 
+import com.example.mmtbistore.dto.StillUsCancelRequest;
+import com.example.mmtbistore.dto.StillUsCancelResponse;
 import com.example.mmtbistore.dto.StillUsDetailResponse;
 import com.example.mmtbistore.dto.StillUsRegisterRequest;
 import com.example.mmtbistore.dto.StillUsResponse;
@@ -34,5 +36,12 @@ public class StillUsController {
     @GetMapping("/{code}")
     public StillUsDetailResponse getByCode(@PathVariable("code") String code) {
         return stillUsService.getByCode(code);
+    }
+
+    // POST /api/still-us/{code}/cancel  body: {"phone":"...","reason":"..."}
+    @PostMapping("/{code}/cancel")
+    public StillUsCancelResponse cancel(@PathVariable("code") String code,
+                                        @Valid @RequestBody StillUsCancelRequest request) {
+        return stillUsService.cancel(code, request);
     }
 }
