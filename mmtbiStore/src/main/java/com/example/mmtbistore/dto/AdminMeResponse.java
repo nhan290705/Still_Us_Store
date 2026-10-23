@@ -1,6 +1,7 @@
 package com.example.mmtbistore.dto;
 
 import com.example.mmtbistore.model.enums.UserRole;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -21,6 +22,9 @@ public class AdminMeResponse {
     private String email;
     private String phoneNumber;
     private UserRole role;
+
+    @JsonProperty("isActive")
     private boolean isActive;
+
     private Instant lastLoginAt;
 }

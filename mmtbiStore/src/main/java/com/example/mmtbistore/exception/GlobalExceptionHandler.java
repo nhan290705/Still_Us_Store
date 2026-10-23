@@ -67,12 +67,6 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.UNAUTHORIZED, ex.getMessage(), request);
     }
 
-    // 403: tài khoản dừng hoạt động hoặc không có quyền
-    @ExceptionHandler(ForbiddenException.class)
-    public ResponseEntity<ApiError> handleForbidden(ForbiddenException ex, HttpServletRequest request) {
-        return build(HttpStatus.FORBIDDEN, ex.getMessage(), request);
-    }
-
     @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
     public ResponseEntity<ApiError> handleAccessDenied(org.springframework.security.access.AccessDeniedException ex, HttpServletRequest request) {
         return build(HttpStatus.FORBIDDEN, "Bạn không có quyền truy cập tài nguyên này", request);

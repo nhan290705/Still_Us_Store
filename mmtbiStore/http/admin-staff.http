@@ -1,0 +1,208 @@
+# Test các API Quản lý nhân sự: /api/admin/staff (Chỉ ADMIN được dùng)
+# Cách chạy: Mở file này trong IntelliJ IDEA, chạy app Spring Boot trước,
+# rồi bấm biểu tượng ▶▶ (Run All Requests) ở đầu file.
+# Tiêu chuẩn nghiệm thu theo tài liệu:
+#   1. Chỉ ADMIN dùng được; STAFF gọi thì 403
+#   2. Danh sách trả PageResponse: username, fullName, email, phone, role, isActive, lastLoginAt
+#   3. Thêm: username trùng thì 409 (ConflictException), pass băm BCrypt
+#   4. Sửa: họ tên, email, SĐT, vai trò; đổi mật khẩu là tuỳ chọn; không trả passwordHash
+#   5. Đổi trạng thái: bật/tắt isActive, chặn admin tự khóa mình (400)
+#   6. Khóa tài khoản rồi đăng nhập lại thì bị 403
+
+@host = http://localhost:8080
+
+### 1. Đăng nhập Admin lấy token
+POST {{host}}/api/admin/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "Admin@123456"
+}
+
+> {%
+    client.test("Admin đăng nhập thành công", function () {
+        client.assert(response.status === 200, "Status: " + response.status);
+        client.global.set("adminToken", response.body.token);
+    });
+%}
+
+### 2. Admin lấy danh sách nhân sự (PageResponse)
+GET {{host}}/api/admin/staff?page=0&size=10
+Authorization: Bearer {{adminToken}}
+
+> {%
+    client.test("Lấy danh sách nhân viên thành công", function () {
+        client.assert(response.status === 200, "Status: " + response.status);
+        client.assert(response.body.items !== undefined, "Không có items");
+        client.assert(response.body.totalItems >= 1, "totalItems: " + response.body.totalItems);
+        var adminUser = response.body.items.filter(function(u) { return u.username === "admin"; })[0];
+        if (adminUser) {
+            client.global.set("adminId", adminUser.id);
+        }
+        var first = response.body.items[0];
+        client.assert(first.passwordHash === undefined, "passwordHash bị lộ trong JSON!");
+    });
+%}
+
+### 3. Admin thêm nhân viên mới (Role STAFF) -> 201
+POST {{host}}/api/admin/staff
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "username": "staff_cuong",
+  "password": "Staff@123456",
+  "fullName": "Nguyễn Văn Cường",
+  "email": "cuong@stillus.local",
+  "phoneNumber": "0987654321",
+  "role": "STAFF"
+}
+
+> {%
+    client.test("Thêm nhân viên thành công", function () {
+        client.assert(response.status === 201, "Status: " + response.status);
+        client.assert(response.body.username === "staff_cuong", "Sai username: " + response.body.username);
+        client.assert(response.body.role === "STAFF", "Sai role: " + response.body.role);
+        var active = (response.body.isActive !== undefined) ? response.body.isActive : response.body.active;
+        client.assert(active === true, "Mới tạo phải active");
+        client.assert(response.body.passwordHash === undefined, "passwordHash bị lộ trong JSON!");
+        client.global.set("createdStaffId", response.body.id);
+    });
+%}
+
+### 4. Thêm trùng tên đăng nhập -> 409 Conflict
+POST {{host}}/api/admin/staff
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "username": "staff_cuong",
+  "password": "Staff@123456",
+  "fullName": "Nguyễn Văn Cường Khác",
+  "email": "cuong2@stillus.local",
+  "phoneNumber": "0987654322",
+  "role": "STAFF"
+}
+
+> {%
+    client.test("Trùng username trả 409", function () {
+        client.assert(response.status === 409, "Status: " + response.status);
+        client.assert(response.body.status === 409, "Body status: " + response.body.status);
+    });
+%}
+
+### 5. Admin cập nhật thông tin nhân viên -> 200
+PUT {{host}}/api/admin/staff/{{createdStaffId}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "fullName": "Nguyễn Văn Cường (Đã Sửa)",
+  "email": "cuong_updated@stillus.local",
+  "phoneNumber": "0999888777",
+  "role": "STAFF"
+}
+
+> {%
+    client.test("Cập nhật thông tin nhân viên", function () {
+        client.assert(response.status === 200, "Status: " + response.status);
+        client.assert(response.body.fullName === "Nguyễn Văn Cường (Đã Sửa)", "Họ tên chưa cập nhật");
+        client.assert(response.body.passwordHash === undefined, "passwordHash bị lộ!");
+    });
+%}
+
+### 6. Đăng nhập bằng tài khoản STAFF vừa tạo -> 200
+POST {{host}}/api/admin/auth/login
+Content-Type: application/json
+
+{
+  "username": "staff_cuong",
+  "password": "Staff@123456"
+}
+
+> {%
+    client.test("STAFF đăng nhập thành công", function () {
+        client.assert(response.status === 200, "Status: " + response.status);
+        client.assert(response.body.role === "STAFF", "Role: " + response.body.role);
+        client.global.set("staffToken", response.body.token);
+    });
+%}
+
+### 7. STAFF gọi API lấy danh sách nhân sự -> 403 Bị chặn
+GET {{host}}/api/admin/staff
+Authorization: Bearer {{staffToken}}
+
+> {%
+    client.test("STAFF bị chặn 403 khi xem danh sách", function () {
+        client.assert(response.status === 403, "Status: " + response.status);
+        client.assert(response.body.status === 403, "ApiError status: " + response.body.status);
+    });
+%}
+
+### 8. STAFF gọi API thêm nhân sự -> 403 Bị chặn
+POST {{host}}/api/admin/staff
+Authorization: Bearer {{staffToken}}
+Content-Type: application/json
+
+{
+  "username": "staff_hacker",
+  "password": "Password@123",
+  "fullName": "Kẻ Xâm Nhập",
+  "role": "STAFF"
+}
+
+> {%
+    client.test("STAFF bị chặn 403 khi thêm nhân viên", function () {
+        client.assert(response.status === 403, "Status: " + response.status);
+    });
+%}
+
+### 9. Admin thử tự khóa tài khoản của chính mình -> 400
+PATCH {{host}}/api/admin/staff/{{adminId}}/status
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "isActive": false
+}
+
+> {%
+    client.test("Chặn admin tự khóa tài khoản", function () {
+        client.assert(response.status === 400, "Status: " + response.status);
+        client.assert(response.body.message === "Admin không thể tự khoá tài khoản của chính mình", "Message: " + response.body.message);
+    });
+%}
+
+### 10. Admin khóa tài khoản nhân viên -> 200 (isActive = false)
+PATCH {{host}}/api/admin/staff/{{createdStaffId}}/status
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "isActive": false
+}
+
+> {%
+    client.test("Khóa tài khoản nhân viên thành công", function () {
+        client.assert(response.status === 200, "Status: " + response.status);
+        var active = (response.body.isActive !== undefined) ? response.body.isActive : response.body.active;
+        client.assert(active === false, "isActive phải là false");
+    });
+%}
+
+### 11. Tài khoản nhân viên bị khóa đăng nhập lại -> 403
+POST {{host}}/api/admin/auth/login
+Content-Type: application/json
+
+{
+  "username": "staff_cuong",
+  "password": "Staff@123456"
+}
+
+> {%
+    client.test("Tài khoản bị khóa đăng nhập bị trả về 403", function () {
+        client.assert(response.status === 403, "Status: " + response.status);
+        client.assert(response.body.status === 403, "ApiError status: " + response.body.status);
+    });
+%}
