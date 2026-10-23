@@ -53,6 +53,23 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleConflict(ConflictException ex, HttpServletRequest request) {
         return build(HttpStatus.CONFLICT, ex.getMessage(), request);
     }
+
+    // 401: chưa đăng nhập hoặc sai thông tin
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<ApiError> handleUnauthorized(UnauthorizedException ex, HttpServletRequest request) {
+        return build(HttpStatus.UNAUTHORIZED, ex.getMessage(), request);
+    }
+
+    // 403: tài khoản dừng hoạt động hoặc không có quyền
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ApiError> handleForbidden(ForbiddenException ex, HttpServletRequest request) {
+        return build(HttpStatus.FORBIDDEN, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<ApiError> handleAccessDenied(org.springframework.security.access.AccessDeniedException ex, HttpServletRequest request) {
+        return build(HttpStatus.FORBIDDEN, "Bạn không có quyền truy cập tài nguyên này", request);
+    }
     // 404: gõ sai đường dẫn (VD: /api/product)
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ApiError> handleNoPath(NoResourceFoundException ex, HttpServletRequest request) {
