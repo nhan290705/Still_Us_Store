@@ -49,6 +49,12 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, "Dữ liệu gửi lên không đúng định dạng JSON", request);
     }
 
+    // 403: có quyền xem nhưng không được làm (VD: huỷ chuỗi STILL US mà SĐT không khớp)
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ApiError> handleForbidden(ForbiddenException ex, HttpServletRequest request) {
+        return build(HttpStatus.FORBIDDEN, ex.getMessage(), request);
+    }
+
     // 409: xung đột với dữ liệu đang có (VD: đơn đã đăng ký STILL US)
     @ExceptionHandler(ConflictException.class)
     public ResponseEntity<ApiError> handleConflict(ConflictException ex, HttpServletRequest request) {

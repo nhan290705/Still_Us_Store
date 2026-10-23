@@ -54,6 +54,8 @@ public class MemoryPage extends BaseEntity {
     @Column(length = 20)
     private StillUsStatus status = StillUsStatus.ACTIVE;
     private Instant cancelledAt;         // huỷ = chỉ mất ưu đãi, vẫn mua hàng bình thường
+    @Column(length = 500)
+    private String cancelReason;         // lý do khách huỷ (không bắt buộc)
     // Đặt tên cột rõ ràng: để mặc định Spring đặt thành milestone90sent_at
     @Column(name = "milestone_90_sent_at")
     private Instant milestone90SentAt;

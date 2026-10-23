@@ -1,4 +1,4 @@
-# Test API STILL US: đăng ký (1-9), xem chuỗi khi quét QR (10-12).
+# Test API STILL US: đăng ký (1-9), xem chuỗi khi quét QR (10-12), huỷ chuỗi (13-17).
 # Cách chạy: chạy app, chạy lại du-lieu-mau-don-hang.sql (vì test 1 đăng ký thật vào database),
 # rồi bấm ▶▶ (Run All Requests) ở đầu file. Các test chạy theo thứ tự từ trên xuống.
 
@@ -201,5 +201,79 @@ GET {{host}}/api/still-us/khongtontai
     client.test("Mã không tồn tại", function () {
         client.assert(response.status === 404, "Mã trạng thái: " + response.status);
         client.assert(response.body.message === "Không tìm thấy chuỗi STILL US", "Thông báo: " + response.body.message);
+    });
+%}
+
+### 13. Huỷ với SĐT không khớp -> 403
+POST {{host}}/api/still-us/anbinh2026/cancel
+Content-Type: application/json
+
+{
+  "phone": "0912345678",
+  "reason": "Thử huỷ hộ"
+}
+
+> {%
+    client.test("Huỷ sai SĐT", function () {
+        client.assert(response.status === 403, "Mã trạng thái: " + response.status);
+        client.assert(response.body.message === "Số điện thoại không khớp với chuỗi STILL US này", "Thông báo: " + response.body.message);
+    });
+%}
+
+### 14. Huỷ đúng (SĐT dạng +84) -> 200, voucher còn dùng được bị thu hồi
+POST {{host}}/api/still-us/anbinh2026/cancel
+Content-Type: application/json
+
+{
+  "phone": "+84 901 234 567",
+  "reason": "Chia tay"
+}
+
+> {%
+    client.test("Huỷ đúng", function () {
+        client.assert(response.status === 200, "Mã trạng thái: " + response.status);
+        client.assert(response.body.status === "CANCELLED", "Trạng thái: " + response.body.status);
+        client.assert(response.body.revokedVouchers === 1, "Số voucher thu hồi: " + response.body.revokedVouchers);
+    });
+%}
+
+### 15. Huỷ lần 2 -> 409
+POST {{host}}/api/still-us/anbinh2026/cancel
+Content-Type: application/json
+
+{
+  "phone": "0901234567"
+}
+
+> {%
+    client.test("Huỷ lần 2", function () {
+        client.assert(response.status === 409, "Mã trạng thái: " + response.status);
+        client.assert(response.body.message === "Chuỗi STILL US này đã huỷ trước đó", "Thông báo: " + response.body.message);
+    });
+%}
+
+### 16. Xem lại sau khi huỷ -> CANCELLED, còn 0 ngày
+GET {{host}}/api/still-us/anbinh2026
+
+> {%
+    client.test("Xem sau khi huỷ", function () {
+        client.assert(response.status === 200, "Mã trạng thái: " + response.status);
+        client.assert(response.body.status === "CANCELLED", "Trạng thái: " + response.body.status);
+        client.assert(response.body.daysLeft === 0, "Số ngày còn lại: " + response.body.daysLeft);
+        client.assert(response.body.cancelledAt !== null, "Thiếu ngày huỷ");
+    });
+%}
+
+### 17. Huỷ chuỗi chưa đăng ký -> 404
+POST {{host}}/api/still-us/anbinh2027/cancel
+Content-Type: application/json
+
+{
+  "phone": "0901234567"
+}
+
+> {%
+    client.test("Huỷ chuỗi chưa đăng ký", function () {
+        client.assert(response.status === 404, "Mã trạng thái: " + response.status);
     });
 %}
