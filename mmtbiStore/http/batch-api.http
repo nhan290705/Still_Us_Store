@@ -103,7 +103,7 @@ Content-Type: application/json
 > {%
     client.test("Validation: tên trống", function () {
         client.assert(response.status === 400, "Mã trạng thái: " + response.status);
-        client.assert(response.body.message.indexOf("name") !== -1, "Message phải nhắc field name");
+        client.assert(response.body.message === "Tên đợt không được để trống", "Thông báo: " + response.body.message);
     });
 %}
 
