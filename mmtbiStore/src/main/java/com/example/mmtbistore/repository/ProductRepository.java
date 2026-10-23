@@ -15,4 +15,6 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     Page<Product> findByStatusAndIsDeletedFalseAndCategory_Slug(ProductStatus status, String categorySlug, Pageable pageable);
 
     Optional<Product> findBySlugAndStatusAndIsDeletedFalse(String slug, ProductStatus status);
+
+    boolean existsByCategoryId(Long categoryId);
 }

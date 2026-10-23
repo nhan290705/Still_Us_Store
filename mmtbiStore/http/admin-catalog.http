@@ -1,0 +1,237 @@
+# Test các API Quản lý Danh mục & Thuộc tính: /api/admin/categories, /api/admin/attributes
+# Cách chạy: Mở file này trong IntelliJ IDEA, chạy app Spring Boot trước,
+# rồi bấm biểu tượng ▶▶ (Run All Requests) ở đầu file.
+# Tiêu chuẩn nghiệm thu theo tài liệu:
+#   1. Danh mục: danh sách có cả danh mục ẩn; thêm, sửa (tên, slug, ảnh, parent, sortOrder, isActive); trùng slug trả 409
+#   2. Danh mục đang có sản phẩm thì chỉ ẩn, không xoá cứng (trả 400)
+#   3. Danh mục ẩn không hiện ở GET /api/categories của trang người dùng
+#   4. Thuộc tính & giá trị: xem, thêm, sửa, xoá giá trị
+
+@host = http://localhost:8080
+
+### 1. Đăng nhập Admin lấy token
+POST {{host}}/api/admin/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "Admin@123456"
+}
+
+> {%
+    client.test("Admin đăng nhập thành công", function () {
+        client.assert(response.status === 200, "Status: " + response.status);
+        client.global.set("adminToken", response.body.token);
+    });
+%}
+
+### 2. Admin lấy toàn bộ danh mục (có cả ẩn)
+GET {{host}}/api/admin/categories
+Authorization: Bearer {{adminToken}}
+
+> {%
+    client.test("Admin xem danh sách danh mục", function () {
+        client.assert(response.status === 200, "Status: " + response.status);
+        client.assert(response.body.length >= 2, "Số danh mục: " + response.body.length);
+        client.global.set("existingCatId", response.body[0].id);
+    });
+%}
+
+### 3. Admin thêm danh mục mới ở trạng thái ẨN (isActive = false) -> 201
+POST {{host}}/api/admin/categories
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "Bộ Sưu Tập Giáng Sinh (Ẩn)",
+  "slug": "bst-giang-sinh-an",
+  "imageUrl": "https://example.com/xmas.png",
+  "sortOrder": 99,
+  "isActive": false
+}
+
+> {%
+    client.test("Thêm danh mục ẩn thành công", function () {
+        client.assert(response.status === 201, "Status: " + response.status);
+        client.assert(response.body.slug === "bst-giang-sinh-an", "Sai slug: " + response.body.slug);
+        var active = (response.body.isActive !== undefined) ? response.body.isActive : response.body.active;
+        client.assert(active === false, "Phải ở trạng thái ẩn");
+        client.global.set("testCatId", response.body.id);
+    });
+%}
+
+### 4. Admin kiểm tra danh mục ẩn CÓ xuất hiện trong danh sách Admin
+GET {{host}}/api/admin/categories
+Authorization: Bearer {{adminToken}}
+
+> {%
+    client.test("Admin thấy được danh mục ẩn", function () {
+        client.assert(response.status === 200, "Status: " + response.status);
+        var found = response.body.some(function(c) { return c.slug === "bst-giang-sinh-an"; });
+        client.assert(found, "Không tìm thấy danh mục ẩn trong Admin!");
+    });
+%}
+
+### 5. KIỂM TRA TƯƠNG THÍCH: Trang người dùng KHÔNG thấy danh mục ẩn
+GET {{host}}/api/categories
+
+> {%
+    client.test("Người dùng KHÔNG thấy danh mục ẩn", function () {
+        client.assert(response.status === 200, "Status: " + response.status);
+        var found = response.body.some(function(c) { return c.slug === "bst-giang-sinh-an"; });
+        client.assert(!found, "Danh mục ẩn bị lộ ra trang người dùng!");
+    });
+%}
+
+### 6. Thêm danh mục trùng slug -> 409 Conflict
+POST {{host}}/api/admin/categories
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "Giáng Sinh Trùng",
+  "slug": "bst-giang-sinh-an",
+  "sortOrder": 100
+}
+
+> {%
+    client.test("Trùng slug trả 409", function () {
+        client.assert(response.status === 409, "Status: " + response.status);
+        client.assert(response.body.status === 409, "Body status: " + response.body.status);
+    });
+%}
+
+### 7. Sửa danh mục: đổi tên và chuyển sang HIỆN (isActive = true)
+PUT {{host}}/api/admin/categories/{{testCatId}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "Bộ Sưu Tập Giáng Sinh (Đã Mở)",
+  "slug": "bst-giang-sinh-an",
+  "sortOrder": 99,
+  "isActive": true
+}
+
+> {%
+    client.test("Sửa danh mục thành công", function () {
+        client.assert(response.status === 200, "Status: " + response.status);
+        client.assert(response.body.name === "Bộ Sưu Tập Giáng Sinh (Đã Mở)", "Tên chưa đổi");
+        var active = (response.body.isActive !== undefined) ? response.body.isActive : response.body.active;
+        client.assert(active === true, "Phải là true");
+    });
+%}
+
+### 8. Thử xoá cứng danh mục đang có sản phẩm -> 400 Bad Request
+DELETE {{host}}/api/admin/categories/{{existingCatId}}
+Authorization: Bearer {{adminToken}}
+
+> {%
+    client.test("Chặn xoá danh mục đang có sản phẩm", function () {
+        client.assert(response.status === 400, "Status: " + response.status);
+        client.assert(response.body.message === "Danh mục đang có sản phẩm thì chỉ được ẩn, không thể xoá cứng", "Message: " + response.body.message);
+    });
+%}
+
+### 9. Xoá cứng danh mục chưa có sản phẩm -> 204 No Content
+DELETE {{host}}/api/admin/categories/{{testCatId}}
+Authorization: Bearer {{adminToken}}
+
+> {%
+    client.test("Xoá danh mục rỗng thành công", function () {
+        client.assert(response.status === 204, "Status: " + response.status);
+    });
+%}
+
+### 10. Xem danh sách thuộc tính & giá trị
+GET {{host}}/api/admin/attributes
+Authorization: Bearer {{adminToken}}
+
+> {%
+    client.test("Lấy danh sách thuộc tính", function () {
+        client.assert(response.status === 200, "Status: " + response.status);
+        client.assert(response.body.length >= 1, "Số thuộc tính: " + response.body.length);
+    });
+%}
+
+### 11. Thêm thuộc tính mới -> 201 Created
+POST {{host}}/api/admin/attributes
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "Chất liệu",
+  "code": "material_test",
+  "displayType": "TEXT"
+}
+
+> {%
+    client.test("Thêm thuộc tính thành công", function () {
+        client.assert(response.status === 201, "Status: " + response.status);
+        client.assert(response.body.code === "material_test", "Code: " + response.body.code);
+        client.global.set("createdAttrId", response.body.id);
+    });
+%}
+
+### 12. Thêm trùng code thuộc tính -> 409 Conflict
+POST {{host}}/api/admin/attributes
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "Chất liệu trùng",
+  "code": "material_test",
+  "displayType": "TEXT"
+}
+
+> {%
+    client.test("Trùng code thuộc tính trả 409", function () {
+        client.assert(response.status === 409, "Status: " + response.status);
+    });
+%}
+
+### 13. Thêm giá trị cho thuộc tính -> 201 Created
+POST {{host}}/api/admin/attributes/{{createdAttrId}}/values
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "value": "Nhựa Croslite Kháng Khuẩn",
+  "colorHex": null,
+  "sortOrder": 1
+}
+
+> {%
+    client.test("Thêm giá trị thuộc tính thành công", function () {
+        client.assert(response.status === 201, "Status: " + response.status);
+        client.assert(response.body.value === "Nhựa Croslite Kháng Khuẩn", "Value: " + response.body.value);
+        client.global.set("createdValId", response.body.id);
+    });
+%}
+
+### 14. Sửa giá trị thuộc tính -> 200
+PUT {{host}}/api/admin/attributes/values/{{createdValId}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "value": "Nhựa EVA Cao Cấp",
+  "sortOrder": 2
+}
+
+> {%
+    client.test("Sửa giá trị thuộc tính thành công", function () {
+        client.assert(response.status === 200, "Status: " + response.status);
+        client.assert(response.body.value === "Nhựa EVA Cao Cấp", "Value: " + response.body.value);
+    });
+%}
+
+### 15. Xoá giá trị thuộc tính -> 204 No Content
+DELETE {{host}}/api/admin/attributes/values/{{createdValId}}
+Authorization: Bearer {{adminToken}}
+
+> {%
+    client.test("Xoá giá trị thuộc tính thành công", function () {
+        client.assert(response.status === 204, "Status: " + response.status);
+    });
+%}
