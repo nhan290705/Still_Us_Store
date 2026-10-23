@@ -23,6 +23,7 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+
     // 404: hỏi một thứ không tồn tại (VD: /api/products/khong-co)
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ApiError> handleNotFound(ResourceNotFoundException ex, HttpServletRequest request) {
@@ -46,6 +47,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiError> handleUnreadableBody(HttpMessageNotReadableException ex, HttpServletRequest request) {
         return build(HttpStatus.BAD_REQUEST, "Dữ liệu gửi lên không đúng định dạng JSON", request);
+    }
+
+    // 403: có quyền xem nhưng không được làm (VD: huỷ chuỗi STILL US mà SĐT không khớp)
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ApiError> handleForbidden(ForbiddenException ex, HttpServletRequest request) {
+        return build(HttpStatus.FORBIDDEN, ex.getMessage(), request);
     }
 
     // 409: xung đột với dữ liệu đang có (VD: đơn đã đăng ký STILL US)
@@ -82,6 +89,7 @@ public class GlobalExceptionHandler {
         String message = "Tham số '" + ex.getName() + "' không hợp lệ: " + ex.getValue();
         return build(HttpStatus.BAD_REQUEST, message, request);
     }
+
 
     // 405: sai phương thức (VD: POST vào API chỉ nhận GET)
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)

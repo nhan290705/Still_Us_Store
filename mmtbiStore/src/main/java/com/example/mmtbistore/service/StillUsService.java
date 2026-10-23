@@ -1,17 +1,23 @@
 package com.example.mmtbistore.service;
 
+import com.example.mmtbistore.dto.StillUsCancelRequest;
+import com.example.mmtbistore.dto.StillUsCancelResponse;
 import com.example.mmtbistore.dto.StillUsDetailResponse;
 import com.example.mmtbistore.dto.StillUsRegisterRequest;
 import com.example.mmtbistore.dto.StillUsResponse;
 import com.example.mmtbistore.exception.BadRequestException;
 import com.example.mmtbistore.exception.ConflictException;
+import com.example.mmtbistore.exception.ForbiddenException;
 import com.example.mmtbistore.exception.ResourceNotFoundException;
 import com.example.mmtbistore.model.enums.OrderStatus;
 import com.example.mmtbistore.model.enums.StillUsStatus;
+import com.example.mmtbistore.model.enums.VoucherStatus;
 import com.example.mmtbistore.model.memory.MemoryPage;
+import com.example.mmtbistore.model.memory.Voucher;
 import com.example.mmtbistore.model.order.Order;
 import com.example.mmtbistore.repository.MemoryPageRepository;
 import com.example.mmtbistore.repository.OrderRepository;
+import com.example.mmtbistore.repository.VoucherRepository;
 import com.example.mmtbistore.util.PhoneNumbers;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -39,6 +45,7 @@ public class StillUsService {
 
     private final OrderRepository orderRepository;
     private final MemoryPageRepository memoryPageRepository;
+    private final VoucherRepository voucherRepository;
 
     // ===================== Mục 6: đăng ký =====================
 
@@ -145,6 +152,44 @@ public class StillUsService {
                 page.getThemeKey(),
                 milestones
         );
+    }
+
+    // ===================== Mục 8: huỷ chuỗi =====================
+
+    @Transactional
+    public StillUsCancelResponse cancel(String code, StillUsCancelRequest request) {
+        MemoryPage page = findPage(code);
+        if (page.getStartedAt() == null) {
+            throw new ResourceNotFoundException("Không tìm thấy chuỗi STILL US");
+        }
+
+        // SĐT phải khớp người đặt đơn, để người lạ quét QR không huỷ được
+        String phone = PhoneNumbers.normalize(request.phone());
+        if (!PhoneNumbers.isValid(phone)) {
+            throw new BadRequestException("Số điện thoại không hợp lệ");
+        }
+        if (!phone.equals(page.getOrder().getCustomer().getPhoneNumber())) {
+            throw new ForbiddenException("Số điện thoại không khớp với chuỗi STILL US này");
+        }
+
+        Instant now = Instant.now();
+        StillUsStatus status = currentStatus(page, now);
+        if (status == StillUsStatus.CANCELLED) {
+            throw new ConflictException("Chuỗi STILL US này đã huỷ trước đó");
+        }
+        if (status == StillUsStatus.COMPLETED) {
+            throw new ConflictException("Chuỗi STILL US đã hoàn thành, không thể huỷ");
+        }
+
+        page.setStatus(StillUsStatus.CANCELLED);
+        page.setCancelledAt(now);
+        page.setCancelReason(request.reason() == null || request.reason().isBlank() ? null : request.reason().trim());
+
+        // Huỷ chỉ mất ưu đãi: voucher còn dùng được chuyển REVOKED, khách vẫn mua bình thường
+        List<Voucher> activeVouchers = voucherRepository.findByMemoryPage_IdAndStatus(page.getId(), VoucherStatus.ACTIVE);
+        activeVouchers.forEach(voucher -> voucher.setStatus(VoucherStatus.REVOKED));
+
+        return new StillUsCancelResponse(page.getSlug(), page.getStatus(), page.getCancelledAt(), activeVouchers.size());
     }
 
     // ===================== Hàm phụ =====================

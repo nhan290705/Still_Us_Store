@@ -1,0 +1,204 @@
+# Test API quản lý đợt bán (admin): /api/admin/batches
+# Cách chạy: mở file này trong IntelliJ, chạy app trước, rồi bấm ▶▶ (Run All Requests) ở đầu file.
+# Kết quả từng test xem ở tab "Tests" bên dưới.
+# ⚠️ Chạy TOÀN BỘ file THEO THỨ TỰ vì các test phụ thuộc lẫn nhau (tạo → sửa → chuyển trạng thái).
+
+@host = http://localhost:8080
+
+### 1. Ban đầu: danh sách đợt rỗng
+GET {{host}}/api/admin/batches
+
+> {%
+    client.test("Danh sách rỗng", function () {
+        client.assert(response.status === 200, "Mã trạng thái: " + response.status);
+        client.assert(response.body.length === 0, "Phải rỗng, nhưng có: " + response.body.length);
+    });
+%}
+
+### 2. Tạo đợt 1: thành công, trạng thái COLLECTING
+POST {{host}}/api/admin/batches
+Content-Type: application/json
+
+{
+  "name": "Đợt 1 - Tháng 10",
+  "note": "Gom đơn clog mùa đông"
+}
+
+> {%
+    client.test("Tạo đợt 1", function () {
+        client.assert(response.status === 201, "Mã trạng thái: " + response.status);
+        client.assert(response.body.name === "Đợt 1 - Tháng 10", "Tên: " + response.body.name);
+        client.assert(response.body.status === "COLLECTING", "Trạng thái: " + response.body.status);
+        client.assert(response.body.note === "Gom đơn clog mùa đông", "Ghi chú: " + response.body.note);
+        client.assert(response.body.openedAt != null, "openedAt phải có giá trị");
+        client.assert(response.body.closedAt == null, "closedAt phải null");
+        client.assert(response.body.completedAt == null, "completedAt phải null");
+    });
+    client.global.set("batchId", response.body.id);
+%}
+
+### 3. Tạo đợt 2 khi đợt 1 đang COLLECTING → 400
+POST {{host}}/api/admin/batches
+Content-Type: application/json
+
+{
+  "name": "Đợt 2 - Thử tạo trùng",
+  "note": null
+}
+
+> {%
+    client.test("Không cho tạo khi đã có COLLECTING", function () {
+        client.assert(response.status === 400, "Mã trạng thái: " + response.status);
+        client.assert(response.body.message.indexOf("COLLECTING") !== -1, "Message phải nhắc COLLECTING");
+    });
+%}
+
+### 4. Xem chi tiết đợt 1
+GET {{host}}/api/admin/batches/{{batchId}}
+
+> {%
+    client.test("Chi tiết đợt 1", function () {
+        client.assert(response.status === 200, "Mã trạng thái: " + response.status);
+        client.assert(response.body.id == client.global.get("batchId"), "ID khớp");
+        client.assert(response.body.status === "COLLECTING", "Trạng thái: " + response.body.status);
+    });
+%}
+
+### 5. Xem đợt không tồn tại → 404
+GET {{host}}/api/admin/batches/999999
+
+> {%
+    client.test("Đợt không tồn tại", function () {
+        client.assert(response.status === 404, "Mã trạng thái: " + response.status);
+    });
+%}
+
+### 6. Sửa tên + ghi chú đợt 1
+PUT {{host}}/api/admin/batches/{{batchId}}
+Content-Type: application/json
+
+{
+  "name": "Đợt 1 - Tháng 10 (đã sửa)",
+  "note": "Cập nhật ghi chú mới"
+}
+
+> {%
+    client.test("Sửa đợt 1", function () {
+        client.assert(response.status === 200, "Mã trạng thái: " + response.status);
+        client.assert(response.body.name === "Đợt 1 - Tháng 10 (đã sửa)", "Tên mới: " + response.body.name);
+        client.assert(response.body.note === "Cập nhật ghi chú mới", "Ghi chú mới: " + response.body.note);
+        client.assert(response.body.status === "COLLECTING", "Trạng thái vẫn COLLECTING");
+    });
+%}
+
+### 7. Tạo đợt thiếu tên → 400 (validation)
+POST {{host}}/api/admin/batches
+Content-Type: application/json
+
+{
+  "name": "",
+  "note": "Thiếu tên"
+}
+
+> {%
+    client.test("Validation: tên trống", function () {
+        client.assert(response.status === 400, "Mã trạng thái: " + response.status);
+        client.assert(response.body.message === "Tên đợt không được để trống", "Thông báo: " + response.body.message);
+    });
+%}
+
+### 8. Chuyển COLLECTING → PRODUCING
+PATCH {{host}}/api/admin/batches/{{batchId}}/advance
+
+> {%
+    client.test("Advance → PRODUCING", function () {
+        client.assert(response.status === 200, "Mã trạng thái: " + response.status);
+        client.assert(response.body.status === "PRODUCING", "Trạng thái: " + response.body.status);
+        client.assert(response.body.closedAt != null, "closedAt phải có giá trị sau khi chuyển PRODUCING");
+        client.assert(response.body.completedAt == null, "completedAt vẫn null");
+    });
+%}
+
+### 9. Sửa đợt đang PRODUCING → vẫn cho phép
+PUT {{host}}/api/admin/batches/{{batchId}}
+Content-Type: application/json
+
+{
+  "name": "Đợt 1 - Đang sản xuất",
+  "note": "Đã gửi xưởng ngày 18/10"
+}
+
+> {%
+    client.test("Sửa đợt PRODUCING", function () {
+        client.assert(response.status === 200, "Mã trạng thái: " + response.status);
+        client.assert(response.body.name === "Đợt 1 - Đang sản xuất", "Tên: " + response.body.name);
+    });
+%}
+
+### 10. Tạo đợt mới khi đợt cũ đã PRODUCING → thành công (chỉ chặn COLLECTING)
+POST {{host}}/api/admin/batches
+Content-Type: application/json
+
+{
+  "name": "Đợt 2 - Tháng 11",
+  "note": null
+}
+
+> {%
+    client.test("Tạo đợt 2 khi đợt 1 PRODUCING", function () {
+        client.assert(response.status === 201, "Mã trạng thái: " + response.status);
+        client.assert(response.body.status === "COLLECTING", "Trạng thái: " + response.body.status);
+    });
+    client.global.set("batchId2", response.body.id);
+%}
+
+### 11. Chuyển PRODUCING → COMPLETED (đợt 1)
+PATCH {{host}}/api/admin/batches/{{batchId}}/advance
+
+> {%
+    client.test("Advance → COMPLETED", function () {
+        client.assert(response.status === 200, "Mã trạng thái: " + response.status);
+        client.assert(response.body.status === "COMPLETED", "Trạng thái: " + response.body.status);
+        client.assert(response.body.completedAt != null, "completedAt phải có giá trị");
+        client.assert(response.body.closedAt != null, "closedAt vẫn giữ giá trị");
+    });
+%}
+
+### 12. Advance đợt đã COMPLETED → 400
+PATCH {{host}}/api/admin/batches/{{batchId}}/advance
+
+> {%
+    client.test("COMPLETED không advance được", function () {
+        client.assert(response.status === 400, "Mã trạng thái: " + response.status);
+        client.assert(response.body.message.indexOf("hoàn thành") !== -1, "Message phải nhắc hoàn thành");
+    });
+%}
+
+### 13. Sửa đợt đã COMPLETED → 400
+PUT {{host}}/api/admin/batches/{{batchId}}
+Content-Type: application/json
+
+{
+  "name": "Thử sửa đợt xong",
+  "note": "Không cho sửa"
+}
+
+> {%
+    client.test("COMPLETED không sửa được", function () {
+        client.assert(response.status === 400, "Mã trạng thái: " + response.status);
+        client.assert(response.body.message.indexOf("COMPLETED") !== -1, "Message phải nhắc COMPLETED");
+    });
+%}
+
+### 14. Danh sách cuối: có 2 đợt, đợt mới nhất lên trước
+GET {{host}}/api/admin/batches
+
+> {%
+    client.test("Danh sách 2 đợt", function () {
+        client.assert(response.status === 200, "Mã trạng thái: " + response.status);
+        client.assert(response.body.length === 2, "Số đợt: " + response.body.length);
+        // Đợt 2 (COLLECTING, openedAt mới hơn) phải lên trước
+        client.assert(response.body[0].status === "COLLECTING", "Đợt đầu: " + response.body[0].status);
+        client.assert(response.body[1].status === "COMPLETED", "Đợt sau: " + response.body[1].status);
+    });
+%}
