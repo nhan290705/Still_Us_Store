@@ -20,6 +20,12 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    // 400: vi phạm nghiệp vụ (VD: tạo đợt COLLECTING khi đã có đợt khác đang COLLECTING)
+    @ExceptionHandler(BadRequestException.class)
+    public ResponseEntity<ApiError> handleBadRequest(BadRequestException ex, HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
     // 404: hỏi một thứ không tồn tại (VD: /api/products/khong-co)
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ApiError> handleNotFound(ResourceNotFoundException ex, HttpServletRequest request) {
@@ -36,6 +42,17 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiError> handleTypeMismatch(MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
         String message = "Tham số '" + ex.getName() + "' không hợp lệ: " + ex.getValue();
+        return build(HttpStatus.BAD_REQUEST, message, request);
+    }
+
+    // 400: body không hợp lệ (@Valid thất bại)
+    @ExceptionHandler(org.springframework.web.bind.MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiError> handleValidation(org.springframework.web.bind.MethodArgumentNotValidException ex,
+                                                     HttpServletRequest request) {
+        String message = ex.getBindingResult().getFieldErrors().stream()
+                .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
+                .reduce((a, b) -> a + "; " + b)
+                .orElse("Dữ liệu không hợp lệ");
         return build(HttpStatus.BAD_REQUEST, message, request);
     }
 
