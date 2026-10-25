@@ -7,4 +7,6 @@ import java.util.List;
 
 public interface AttributeValueRepository extends JpaRepository<AttributeValue, Long> {
     List<AttributeValue> findByAttribute_IdOrderBySortOrderAsc(Long attributeId);
+    boolean existsByAttribute_IdAndValue(Long attributeId, String value);
+    boolean existsByAttribute_IdAndValueAndIdNot(Long attributeId, String value, Long id);
 }

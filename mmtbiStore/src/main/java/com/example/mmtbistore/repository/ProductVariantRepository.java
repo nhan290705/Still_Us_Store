@@ -11,6 +11,8 @@ import java.util.Optional;
 
 public interface ProductVariantRepository extends JpaRepository<ProductVariant, Long> {
     Optional<ProductVariant> findBySku(String sku);
+    boolean existsBySku(String sku);
+    boolean existsBySkuAndIdNot(String sku, Long id);
     List<ProductVariant> findByProduct_Id(Long productId);
 
     // Trừ kho an toàn khi đặt hàng: trả về 0 nếu không đủ hàng

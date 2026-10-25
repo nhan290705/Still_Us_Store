@@ -7,4 +7,6 @@ import java.util.Optional;
 
 public interface ProductAttributeRepository extends JpaRepository<ProductAttribute, Long> {
     Optional<ProductAttribute> findByCode(String code);   // "size", "color"
+    boolean existsByCode(String code);
+    boolean existsByCodeAndIdNot(String code, Long id);
 }

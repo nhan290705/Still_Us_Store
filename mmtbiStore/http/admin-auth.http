@@ -1,0 +1,98 @@
+# Test các API xác thực Admin Dashboard
+# Cách chạy: Mở file này trong IntelliJ IDEA, chạy app Spring Boot trước,
+# rồi bấm biểu tượng ▶▶ (Run All Requests) ở đầu file.
+# Tiêu chuẩn xong việc theo PDF:
+#   1. Đăng nhập đúng (200, có token, fullName, role, ghi last_login_at)
+#   2. Sai mật khẩu (401)
+#   3. Sai username (401)
+#   4. Tài khoản dừng hợp tác (403)
+#   5. Gọi /api/admin/... không có token (401)
+#   6. Gọi /api/admin/... có token (200)
+
+@host = http://localhost:8080
+
+### 1. Đăng nhập đúng: trả 200, có token, fullName, role ADMIN
+POST {{host}}/api/admin/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "Admin@123456"
+}
+
+> {%
+    client.test("Đăng nhập thành công", function () {
+        client.assert(response.status === 200, "Mã trạng thái: " + response.status);
+        client.assert(response.body.token !== undefined && response.body.token.length > 0, "Không có token");
+        client.assert(response.body.role === "ADMIN", "Role không phải ADMIN: " + response.body.role);
+        client.global.set("adminToken", response.body.token);
+    });
+%}
+
+### 2. Đăng nhập sai mật khẩu: trả 401
+POST {{host}}/api/admin/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "WrongPassword123"
+}
+
+> {%
+    client.test("Sai mật khẩu trả 401", function () {
+        client.assert(response.status === 401, "Mã trạng thái: " + response.status);
+        client.assert(response.body.status === 401, "Status trong body: " + response.body.status);
+    });
+%}
+
+### 3. Đăng nhập sai tên đăng nhập: trả 401
+POST {{host}}/api/admin/auth/login
+Content-Type: application/json
+
+{
+  "username": "non_existing_user",
+  "password": "Admin@123456"
+}
+
+> {%
+    client.test("Sai username trả 401", function () {
+        client.assert(response.status === 401, "Mã trạng thái: " + response.status);
+    });
+%}
+
+### 4. Đăng nhập tài khoản dừng hợp tác (is_active = false): trả 403
+POST {{host}}/api/admin/auth/login
+Content-Type: application/json
+
+{
+  "username": "locked_staff",
+  "password": "Staff@123456"
+}
+
+> {%
+    client.test("Tài khoản dừng hợp tác trả 403", function () {
+        client.assert(response.status === 403, "Mã trạng thái: " + response.status);
+        client.assert(response.body.status === 403, "Status trong body: " + response.body.status);
+    });
+%}
+
+### 5. Gọi /api/admin/auth/me không có token: trả 401
+GET {{host}}/api/admin/auth/me
+
+> {%
+    client.test("Không có token trả 401", function () {
+        client.assert(response.status === 401, "Mã trạng thái: " + response.status);
+    });
+%}
+
+### 6. Gọi /api/admin/auth/me có token: trả 200 và thông tin admin (không có passwordHash)
+GET {{host}}/api/admin/auth/me
+Authorization: Bearer {{adminToken}}
+
+> {%
+    client.test("Có token lấy thông tin admin thành công", function () {
+        client.assert(response.status === 200, "Mã trạng thái: " + response.status);
+        client.assert(response.body.username === "admin", "Username không đúng: " + response.body.username);
+        client.assert(response.body.passwordHash === undefined, "passwordHash bị lộ trong JSON!");
+    });
+%}
