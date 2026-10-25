@@ -1,0 +1,238 @@
+# Test API Upload ảnh & Quản lý ảnh sản phẩm: /api/admin/uploads, /api/admin/products/{id}/images
+# Cách chạy: Mở file này trong IntelliJ IDEA, chạy app Spring Boot trước,
+# rồi bấm biểu tượng ▶▶ (Run All Requests) ở đầu file.
+# Tiêu chuẩn nghiệm thu theo tài liệu (vieccualong.pdf):
+#   1. Tải ảnh lên server (POST /api/admin/uploads) thành công, trả URL /uploads/...
+#   2. Cấu hình phục vụ file tĩnh: gọi GET URL vừa upload trả 200 OK trực tiếp
+#   3. Chặn upload file rỗng hoặc sai định dạng (không phải jpg/png/webp) -> trả 400 Bad Request
+#   4. Quản lý ảnh sản phẩm: thêm, sửa, xoá ảnh gắn vào sản phẩm
+#   5. Logic ảnh đại diện: khi 1 ảnh được đặt isPrimary = true, các ảnh khác tự động chuyển về false
+#   6. Kiểm tra tương thích: Không ảnh hưởng API người dùng (GET /api/products)
+
+@host = http://localhost:8080
+
+### 1. Đăng nhập Admin lấy token
+POST {{host}}/api/admin/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "Admin@123456"
+}
+
+> {%
+    client.test("Admin đăng nhập thành công", function () {
+        client.assert(response.status === 200, "Status: " + response.status);
+        client.global.set("adminToken", response.body.token);
+    });
+%}
+
+### 2. Admin upload ảnh PNG hợp lệ lên server -> 201 Created
+POST {{host}}/api/admin/uploads
+Authorization: Bearer {{adminToken}}
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="sample.png"
+Content-Type: image/png
+
+< ./fixtures/sample.png
+--WebAppBoundary--
+
+> {%
+    client.test("Upload ảnh PNG thành công", function () {
+        client.assert(response.status === 201, "Status: " + response.status);
+        client.assert(response.body.url.indexOf("/uploads/") === 0, "URL phải bắt đầu bằng /uploads/: " + response.body.url);
+        client.assert(response.body.originalFileName === "sample.png", "Tên file gốc: " + response.body.originalFileName);
+        client.global.set("uploadedImageUrl", response.body.url);
+    });
+%}
+
+### 3. Kiểm tra phục vụ file tĩnh vừa upload -> 200 OK
+GET {{host}}{{uploadedImageUrl}}
+
+> {%
+    client.test("Truy cập file tĩnh trực tiếp thành công", function () {
+        client.assert(response.status === 200, "Status: " + response.status);
+    });
+%}
+
+### 4. Upload file sai định dạng (.txt) -> 400 Bad Request
+POST {{host}}/api/admin/uploads
+Authorization: Bearer {{adminToken}}
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="sample.txt"
+Content-Type: text/plain
+
+< ./fixtures/sample.txt
+--WebAppBoundary--
+
+> {%
+    client.test("Chặn upload file không phải ảnh trả 400", function () {
+        client.assert(response.status === 400, "Status: " + response.status);
+    });
+%}
+
+### 5. Lấy danh sách ảnh của sản phẩm ID 1 ban đầu
+GET {{host}}/api/admin/products/1/images
+Authorization: Bearer {{adminToken}}
+
+> {%
+    client.test("Lấy danh sách ảnh sản phẩm 1", function () {
+        client.assert(response.status === 200, "Status: " + response.status);
+    });
+%}
+
+### 6. Thêm ảnh thứ nhất vào sản phẩm ID 1 (isPrimary = true) -> 201 Created
+POST {{host}}/api/admin/products/1/images
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "url": "{{uploadedImageUrl}}",
+  "altText": "Ảnh chính diện Classic Clog",
+  "sortOrder": 1,
+  "isPrimary": true
+}
+
+> {%
+    client.test("Thêm ảnh chính vào sản phẩm thành công", function () {
+        client.assert(response.status === 201, "Status: " + response.status);
+        var isPrimary = (response.body.isPrimary !== undefined) ? response.body.isPrimary : response.body.primary;
+        client.assert(isPrimary === true, "isPrimary phải là true");
+        client.global.set("testImageId1", response.body.id);
+    });
+%}
+
+### 7. Thêm ảnh thứ hai vào sản phẩm ID 1 (isPrimary = false) -> 201 Created
+POST {{host}}/api/admin/products/1/images
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "url": "/uploads/classic_clog_sole.png",
+  "altText": "Ảnh đế giày Classic Clog",
+  "sortOrder": 2,
+  "isPrimary": false
+}
+
+> {%
+    client.test("Thêm ảnh phụ vào sản phẩm thành công", function () {
+        client.assert(response.status === 201, "Status: " + response.status);
+        var isPrimary = (response.body.isPrimary !== undefined) ? response.body.isPrimary : response.body.primary;
+        client.assert(isPrimary === false, "isPrimary phải là false");
+        client.global.set("testImageId2", response.body.id);
+    });
+%}
+
+### 8. Lấy danh sách ảnh sản phẩm 1 -> Có 2 ảnh vừa thêm
+GET {{host}}/api/admin/products/1/images
+Authorization: Bearer {{adminToken}}
+
+> {%
+    client.test("Danh sách ảnh sản phẩm có cả 2 ảnh", function () {
+        client.assert(response.status === 200, "Status: " + response.status);
+        client.assert(response.body.length >= 2, "Số ảnh: " + response.body.length);
+        var img1 = response.body.find(function(x) { return x.id == client.global.get("testImageId1"); });
+        var img2 = response.body.find(function(x) { return x.id == client.global.get("testImageId2"); });
+        client.assert(img1 !== undefined, "Không tìm thấy ảnh 1");
+        client.assert(img2 !== undefined, "Không tìm thấy ảnh 2");
+        var p1 = (img1.isPrimary !== undefined) ? img1.isPrimary : img1.primary;
+        var p2 = (img2.isPrimary !== undefined) ? img2.isPrimary : img2.primary;
+        client.assert(p1 === true, "Ảnh 1 phải là ảnh chính");
+        client.assert(p2 === false, "Ảnh 2 phải là ảnh phụ");
+    });
+%}
+
+### 9. Cập nhật ảnh thứ hai làm ảnh chính (isPrimary = true) -> 200 OK
+PUT {{host}}/api/admin/products/images/{{testImageId2}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "url": "/uploads/classic_clog_sole.png",
+  "altText": "Ảnh đế giày (Đã chuyển thành ảnh chính)",
+  "sortOrder": 1,
+  "isPrimary": true
+}
+
+> {%
+    client.test("Cập nhật ảnh 2 làm ảnh chính thành công", function () {
+        client.assert(response.status === 200, "Status: " + response.status);
+        var isPrimary = (response.body.isPrimary !== undefined) ? response.body.isPrimary : response.body.primary;
+        client.assert(isPrimary === true, "isPrimary của ảnh 2 phải là true");
+    });
+%}
+
+### 10. Kiểm tra ảnh 1 đã tự động bị hạ về isPrimary = false
+GET {{host}}/api/admin/products/1/images
+Authorization: Bearer {{adminToken}}
+
+> {%
+    client.test("Ảnh 1 tự động chuyển sang false", function () {
+        client.assert(response.status === 200, "Status: " + response.status);
+        var img1 = response.body.find(function(x) { return x.id == client.global.get("testImageId1"); });
+        var img2 = response.body.find(function(x) { return x.id == client.global.get("testImageId2"); });
+        var p1 = (img1.isPrimary !== undefined) ? img1.isPrimary : img1.primary;
+        var p2 = (img2.isPrimary !== undefined) ? img2.isPrimary : img2.primary;
+        client.assert(p1 === false, "Ảnh 1 đã được tự động hạ về false");
+        client.assert(p2 === true, "Ảnh 2 là ảnh chính duy nhất");
+    });
+%}
+
+### 11. Xem chi tiết sản phẩm 1: Response có trường images
+GET {{host}}/api/admin/products/1
+Authorization: Bearer {{adminToken}}
+
+> {%
+    client.test("Chi tiết sản phẩm chứa danh sách ảnh", function () {
+        client.assert(response.status === 200, "Status: " + response.status);
+        client.assert(response.body.images !== undefined, "Phải có trường images");
+        client.assert(response.body.images.length >= 2, "Số ảnh trong chi tiết: " + response.body.images.length);
+    });
+%}
+
+### 12. Xoá ảnh thứ hai khỏi sản phẩm -> 204 No Content
+DELETE {{host}}/api/admin/products/images/{{testImageId2}}
+Authorization: Bearer {{adminToken}}
+
+> {%
+    client.test("Xoá ảnh 2 thành công", function () {
+        client.assert(response.status === 204, "Status: " + response.status);
+    });
+%}
+
+### 13. Xoá ảnh thứ nhất khỏi sản phẩm -> 204 No Content
+DELETE {{host}}/api/admin/products/images/{{testImageId1}}
+Authorization: Bearer {{adminToken}}
+
+> {%
+    client.test("Xoá ảnh 1 thành công", function () {
+        client.assert(response.status === 204, "Status: " + response.status);
+    });
+%}
+
+### 14. Kiểm tra lại danh sách ảnh của sản phẩm 1 đã dọn sạch các ảnh test
+GET {{host}}/api/admin/products/1/images
+Authorization: Bearer {{adminToken}}
+
+> {%
+    client.test("Đã dọn sạch các ảnh test khỏi sản phẩm", function () {
+        client.assert(response.status === 200, "Status: " + response.status);
+        var foundTest1 = response.body.some(function(x) { return x.id == client.global.get("testImageId1"); });
+        var foundTest2 = response.body.some(function(x) { return x.id == client.global.get("testImageId2"); });
+        client.assert(!foundTest1 && !foundTest2, "Ảnh test chưa được xoá");
+    });
+%}
+
+### 15. KIỂM TRA HỒI QUY: Khách hàng gọi GET /api/products vẫn 200 OK và totalItems = 3
+GET {{host}}/api/products
+
+> {%
+    client.test("API khách hàng không bị ảnh hưởng", function () {
+        client.assert(response.status === 200, "Status: " + response.status);
+        client.assert(response.body.totalItems === 3, "totalItems: " + response.body.totalItems);
+    });
+%}

@@ -49,5 +49,8 @@ public class AdminProductDetailResponse {
     private Instant updatedAt;
 
     @Builder.Default
+    private List<ProductImageResponse> images = new ArrayList<>();
+
+    @Builder.Default
     private List<AdminProductVariantResponse> variants = new ArrayList<>();
 }

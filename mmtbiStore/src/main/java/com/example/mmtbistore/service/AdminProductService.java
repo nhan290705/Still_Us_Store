@@ -7,6 +7,7 @@ import com.example.mmtbistore.exception.ResourceNotFoundException;
 import com.example.mmtbistore.model.catalog.AttributeValue;
 import com.example.mmtbistore.model.catalog.Category;
 import com.example.mmtbistore.model.catalog.Product;
+import com.example.mmtbistore.model.catalog.ProductImage;
 import com.example.mmtbistore.model.catalog.ProductVariant;
 import com.example.mmtbistore.model.enums.ProductStatus;
 import com.example.mmtbistore.repository.AttributeValueRepository;
@@ -273,6 +274,10 @@ public class AdminProductService {
     }
 
     private AdminProductDetailResponse toDetailResponse(Product p) {
+        List<ProductImageResponse> imageResponses = (p.getImages() != null) ? p.getImages().stream()
+                .map(this::toImageResponse)
+                .toList() : List.of();
+
         List<AdminProductVariantResponse> variantResponses = (p.getVariants() != null) ? p.getVariants().stream()
                 .map(v -> toVariantResponse(v, p.getBasePrice()))
                 .toList() : List.of();
@@ -298,7 +303,21 @@ public class AdminProductService {
                 .soldCount(p.getSoldCount())
                 .createdAt(p.getCreatedAt())
                 .updatedAt(p.getUpdatedAt())
+                .images(imageResponses)
                 .variants(variantResponses)
+                .build();
+    }
+
+    private ProductImageResponse toImageResponse(ProductImage img) {
+        return ProductImageResponse.builder()
+                .id(img.getId())
+                .productId(img.getProduct() != null ? img.getProduct().getId() : null)
+                .url(img.getUrl())
+                .altText(img.getAltText())
+                .sortOrder(img.getSortOrder())
+                .isPrimary(img.isPrimary())
+                .createdAt(img.getCreatedAt())
+                .updatedAt(img.getUpdatedAt())
                 .build();
     }
 
